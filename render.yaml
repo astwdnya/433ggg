@@ -7,17 +7,17 @@ services:
     region: oregon
     envVars:
       - key: BOT_TOKEN
-        sync: false
+        value: "7675664254:AAHL7QhPonc47z0QKRFnB5p_L15SRiLBddc"
       - key: API_ID
-        sync: false
+        value: "2040"
       - key: API_HASH
-        sync: false
+        value: "b18441a1ff607e10a989891a5462e627"
       - key: TELEGRAM_API_ID
-        sync: false
+        value: "2040"
       - key: TELEGRAM_API_HASH
-        sync: false
+        value: "b18441a1ff607e10a989891a5462e627"
       - key: AUTHORIZED_USERS
-        sync: false
+        value: "818185073,6936101187,7972834913"
       - key: ALLOW_ALL
         value: "false"
       - key: HEALTH_PORT
