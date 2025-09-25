@@ -224,8 +224,12 @@ https://example.com/image.jpg
         processing_msg = await update.message.reply_text("⏳ در حال دانلود فایل...")
         
         try:
+            # Check if it's qombol.com - handle specially
+            if 'qombol.com' in url.lower():
+                print(f"🎬 Detected qombol.com URL, using custom handler: {url}")
+                file_path, filename, file_size = await self.download_qombol_content(url, processing_msg, user.first_name)
             # Check if it's a video site URL that needs yt-dlp
-            if self.is_video_site_url(url):
+            elif self.is_video_site_url(url):
                 print(f"📹 Detected video site URL, using yt-dlp: {url}")
                 file_path, filename, file_size = await self.download_video_with_ytdlp(url, processing_msg, user.first_name)
             else:
@@ -269,14 +273,96 @@ https://example.com/image.jpg
             'xvideos.com', 'www.xvideos.com',
             'xnxx.com', 'www.xnxx.com',
             'porn300.com', 'www.porn300.com',
-            'xvv1deos.com', 'www.xvv1deos.com',
-            'qombol.com', 'www.qombol.com'
+            'xvv1deos.com', 'www.xvv1deos.com'
         ]
         try:
             parsed = urlparse(url.lower())
             return any(site in parsed.netloc for site in video_sites)
         except:
             return False
+    
+    async def download_qombol_content(self, url: str, progress_msg=None, user_name: str = "") -> tuple:
+        """Download content from qombol.com by extracting video URLs from the page"""
+        import re
+        import tempfile
+        
+        try:
+            # Update progress message
+            if progress_msg:
+                try:
+                    await progress_msg.edit_text("🔍 در حال استخراج لینک ویدیو از qombol.com...")
+                except:
+                    pass
+            
+            # Fetch the webpage content
+            timeout = aiohttp.ClientTimeout(total=30, connect=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        raise Exception(f"HTTP {response.status}")
+                    
+                    html_content = await response.text()
+            
+            # Look for video URLs in the HTML content
+            # Common patterns for video URLs
+            video_patterns = [
+                r'<video[^>]*src=["\']([^"\']+)["\']',
+                r'<source[^>]*src=["\']([^"\']+)["\']',
+                r'file:\s*["\']([^"\']+\.(?:mp4|avi|mkv|mov|wmv|flv|webm))["\']',
+                r'src:\s*["\']([^"\']+\.(?:mp4|avi|mkv|mov|wmv|flv|webm))["\']',
+                r'video_url["\']?\s*:\s*["\']([^"\']+)["\']',
+                r'https?://[^"\'\s]+\.(?:mp4|avi|mkv|mov|wmv|flv|webm)',
+            ]
+            
+            video_url = None
+            for pattern in video_patterns:
+                matches = re.findall(pattern, html_content, re.IGNORECASE)
+                if matches:
+                    video_url = matches[0]
+                    break
+            
+            if not video_url:
+                # If no direct video URL found, try to find embedded video players
+                embed_patterns = [
+                    r'<iframe[^>]*src=["\']([^"\']+)["\']',
+                    r'embed_url["\']?\s*:\s*["\']([^"\']+)["\']',
+                ]
+                
+                for pattern in embed_patterns:
+                    matches = re.findall(pattern, html_content, re.IGNORECASE)
+                    if matches:
+                        embed_url = matches[0]
+                        # Try to extract video from embed URL
+                        if any(domain in embed_url for domain in ['youtube.com', 'vimeo.com', 'dailymotion.com']):
+                            video_url = embed_url
+                            break
+            
+            if not video_url:
+                raise Exception("لینک ویدیو در صفحه پیدا نشد")
+            
+            # Make sure URL is absolute
+            if video_url.startswith('//'):
+                video_url = 'https:' + video_url
+            elif video_url.startswith('/'):
+                from urllib.parse import urljoin
+                video_url = urljoin(url, video_url)
+            
+            print(f"📹 Found video URL: {video_url}")
+            
+            # Update progress message
+            if progress_msg:
+                try:
+                    await progress_msg.edit_text("⏬ در حال دانلود ویدیو...")
+                except:
+                    pass
+            
+            # Now download the actual video file
+            return await self.download_file(video_url, progress_msg, user_name)
+            
+        except Exception as e:
+            error_msg = f"خطا در دانلود از qombol.com: {str(e)}"
+            print(f"❌ {error_msg}")
+            raise Exception(error_msg)
     
     async def download_file(self, url: str, progress_msg=None, user_name: str = "") -> tuple:
         """Download file from URL with progress tracking"""
