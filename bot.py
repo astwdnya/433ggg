@@ -281,6 +281,83 @@ https://example.com/image.jpg
         except:
             return False
     
+    async def extract_mediadelivery_video(self, embed_url: str) -> str:
+        """Extract direct video URL from mediadelivery.net embed"""
+        try:
+            print(f"🔍 Extracting from mediadelivery embed: {embed_url}")
+            
+            # Fetch the embed page
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Referer': 'https://www.qombol.com/',
+            }
+            
+            timeout = aiohttp.ClientTimeout(total=30, connect=10)
+            async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+                async with session.get(embed_url) as response:
+                    if response.status != 200:
+                        raise Exception(f"HTTP {response.status}")
+                    
+                    embed_content = await response.text()
+            
+            print(f"📄 Embed page content length: {len(embed_content)}")
+            
+            # Look for video URLs in the embed page
+            import re
+            video_patterns = [
+                r'"src":\s*"([^"]*\.mp4[^"]*)"',
+                r'"file":\s*"([^"]*\.mp4[^"]*)"',
+                r'"url":\s*"([^"]*\.mp4[^"]*)"',
+                r'src:\s*"([^"]*\.mp4[^"]*)"',
+                r'file:\s*"([^"]*\.mp4[^"]*)"',
+                r'https://[^"\s]*\.b-cdn\.net/[^"\s]*\.mp4',
+                r'https://[^"\s]*bunnycdn[^"\s]*\.mp4',
+                r'https://[^"\s]*mediadelivery[^"\s]*\.mp4',
+            ]
+            
+            for i, pattern in enumerate(video_patterns):
+                matches = re.findall(pattern, embed_content, re.IGNORECASE)
+                if matches:
+                    video_url = matches[0]
+                    print(f"✅ Found video URL with pattern {i+1}: {video_url}")
+                    
+                    # Clean up the URL (remove escape characters)
+                    video_url = video_url.replace('\\/', '/')
+                    return video_url
+            
+            # If no direct video found, try to construct the URL from embed parameters
+            # Extract video ID from embed URL
+            import re
+            video_id_match = re.search(r'/embed/(\d+)/([a-f0-9-]+)', embed_url)
+            if video_id_match:
+                library_id = video_id_match.group(1)
+                video_id = video_id_match.group(2)
+                
+                # Try common BunnyCDN/MediaDelivery URL patterns
+                possible_urls = [
+                    f"https://iframe.mediadelivery.net/play/{library_id}/{video_id}",
+                    f"https://vz-{library_id}.b-cdn.net/{video_id}/playlist.m3u8",
+                    f"https://vz-{library_id}.b-cdn.net/{video_id}/play_{library_id}p.mp4",
+                    f"https://vz-{library_id}.b-cdn.net/{video_id}/play_720p.mp4",
+                    f"https://vz-{library_id}.b-cdn.net/{video_id}/play_480p.mp4",
+                ]
+                
+                for test_url in possible_urls:
+                    try:
+                        async with session.head(test_url) as test_response:
+                            if test_response.status == 200:
+                                print(f"✅ Found working video URL: {test_url}")
+                                return test_url
+                    except:
+                        continue
+            
+            print("⚠️ Could not extract direct video URL from mediadelivery embed")
+            return None
+            
+        except Exception as e:
+            print(f"❌ Error extracting mediadelivery video: {e}")
+            return None
+    
     async def download_qombol_content(self, url: str, progress_msg=None, user_name: str = "") -> tuple:
         """Download content from qombol.com by extracting video URLs from the page"""
         import re
@@ -358,10 +435,20 @@ https://example.com/image.jpg
                         embed_url = matches[0]
                         print(f"🔗 Found embed with pattern {i+1}: {embed_url}")
                         
-                        # Check if it's a known video platform
-                        if any(domain in embed_url.lower() for domain in ['youtube.com', 'vimeo.com', 'dailymotion.com', 'pornhub.com', 'xvideos.com']):
-                            video_url = embed_url
-                            break
+                        # Check if it's a known video platform or streaming service
+                        if any(domain in embed_url.lower() for domain in ['youtube.com', 'vimeo.com', 'dailymotion.com', 'pornhub.com', 'xvideos.com', 'mediadelivery.net', 'bunnycdn.com', 'jwplayer.com']):
+                            print(f"🎯 Recognized video service: {embed_url}")
+                            # For mediadelivery.net, try to extract direct video URL
+                            if 'mediadelivery.net' in embed_url.lower():
+                                try:
+                                    video_url = await self.extract_mediadelivery_video(embed_url)
+                                    if video_url:
+                                        break
+                                except Exception as e:
+                                    print(f"⚠️ Failed to extract from mediadelivery: {e}")
+                            else:
+                                video_url = embed_url
+                                break
                         # Or if it contains video file extension
                         elif any(ext in embed_url.lower() for ext in ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm']):
                             video_url = embed_url
