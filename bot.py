@@ -117,7 +117,7 @@ class TelegramDownloadBot:
 
 لینک مستقیم دانلود فایل یا لینک ویدیو خودتون رو برام بفرستید تا براتون دانلود کنم و ارسال کنم.
 
-🎬 پشتیبانی از سایت‌های ویدیو: Pornhub, YouTube, Xvideos و...
+🎬 پشتیبانی از سایت‌های ویدیو: Pornhub, YouTube, Xvideos, Porn300 و...
 📁 پشتیبانی از لینک‌های مستقیم دانلود
 
 برای راهنمایی /help رو بزنید.
@@ -147,6 +147,7 @@ class TelegramDownloadBot:
 • YouTube
 • Xvideos
 • Xnxx
+• Porn300
 
 📁 لینک‌های مستقیم دانلود:
 • تمام فرمت‌های فایل
@@ -154,6 +155,7 @@ class TelegramDownloadBot:
 
 مثال لینک‌های معتبر:
 https://www.pornhub.com/view_video.php?viewkey=...
+https://www.porn300.com/video/title/embed/
 https://example.com/file.pdf
 https://example.com/image.jpg
         """
@@ -236,7 +238,8 @@ https://example.com/image.jpg
             'pornhub.com', 'www.pornhub.com',
             'youtube.com', 'www.youtube.com', 'youtu.be',
             'xvideos.com', 'www.xvideos.com',
-            'xnxx.com', 'www.xnxx.com'
+            'xnxx.com', 'www.xnxx.com',
+            'porn300.com', 'www.porn300.com'
         ]
         try:
             parsed = urlparse(url.lower())
