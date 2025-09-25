@@ -232,6 +232,20 @@ https://example.com/image.jpg
                     # Handler provided user message, no further action needed
                     return
                 file_path, filename, file_size = result
+            # Check if it's Instagram - handle specially
+            elif 'instagram.com' in url.lower():
+                print(f"📸 Detected Instagram URL, using custom handler: {url}")
+                result = await self.download_instagram_content(url, processing_msg, user.first_name)
+                if result == (None, None, None):
+                    return
+                file_path, filename, file_size = result
+            # Check if it's Reddit - handle specially  
+            elif 'reddit.com' in url.lower() or 'v.redd.it' in url.lower():
+                print(f"🔴 Detected Reddit URL, using custom handler: {url}")
+                result = await self.download_reddit_content(url, processing_msg, user.first_name)
+                if result == (None, None, None):
+                    return
+                file_path, filename, file_size = result
             # Check if it's a video site URL that needs yt-dlp
             elif self.is_video_site_url(url):
                 print(f"📹 Detected video site URL, using yt-dlp: {url}")
@@ -278,9 +292,7 @@ https://example.com/image.jpg
             'xnxx.com', 'www.xnxx.com',
             'porn300.com', 'www.porn300.com',
             'xvv1deos.com', 'www.xvv1deos.com',
-            'motherless.com', 'www.motherless.com',
-            'instagram.com', 'www.instagram.com',
-            'reddit.com', 'www.reddit.com', 'v.redd.it'
+            'motherless.com', 'www.motherless.com'
         ]
         try:
             parsed = urlparse(url.lower())
@@ -420,6 +432,111 @@ https://example.com/image.jpg
         except Exception as e:
             print(f"❌ Error extracting mediadelivery video: {e}")
             return None
+    
+    async def download_instagram_content(self, url: str, progress_msg=None, user_name: str = "") -> tuple:
+        """Handle Instagram downloads with fallback message"""
+        try:
+            if progress_msg:
+                await progress_msg.edit_text("📸 در حال پردازش لینک Instagram...")
+            
+            # Instagram requires authentication, provide alternative
+            if progress_msg:
+                await progress_msg.edit_text(
+                    f"📸 Instagram محدودیت‌های دسترسی دارد.\n\n"
+                    f"🔗 لینک اصلی:\n{url}\n\n"
+                    f"💡 راه‌های جایگزین:\n"
+                    f"• از اپلیکیشن Instagram ذخیره کنید\n"
+                    f"• از سایت‌های دانلود آنلاین استفاده کنید\n"
+                    f"• لینک را در مرورگر باز کنید"
+                )
+                return None, None, None
+        except Exception as e:
+            print(f"❌ Error handling Instagram: {e}")
+            raise Exception(f"خطا در پردازش Instagram: {str(e)}")
+    
+    async def download_reddit_content(self, url: str, progress_msg=None, user_name: str = "") -> tuple:
+        """Handle Reddit downloads with custom extraction"""
+        try:
+            if progress_msg:
+                await progress_msg.edit_text("🔴 در حال پردازش لینک Reddit...")
+            
+            # Convert mobile/share URL to proper format
+            if '/s/' in url:
+                # This is a share URL, we need to resolve it first
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                }
+                
+                timeout = aiohttp.ClientTimeout(total=30, connect=10)
+                async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+                    async with session.get(url, allow_redirects=True) as response:
+                        if response.status == 200:
+                            final_url = str(response.url)
+                            print(f"🔗 Resolved Reddit URL: {final_url}")
+                            url = final_url
+                        else:
+                            raise Exception(f"HTTP {response.status}")
+            
+            # Try to extract video using yt-dlp with Reddit-specific options
+            import tempfile
+            temp_dir = tempfile.gettempdir()
+            
+            ydl_opts = {
+                'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
+                'format': 'best[height<=720]/best',
+                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'extractor_args': {
+                    'reddit': {
+                        'sort': 'best'
+                    }
+                }
+            }
+            
+            if progress_msg:
+                await progress_msg.edit_text("⏬ در حال دانلود از Reddit...")
+            
+            loop = asyncio.get_event_loop()
+            
+            def download_sync():
+                import yt_dlp
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    safe_title = "".join(c for c in info.get('title', 'reddit_video') if c.isalnum() or c in (' ', '-', '_')).rstrip()
+                    
+                    # Download
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl_download:
+                        ydl_download.download([url])
+                    
+                    return safe_title, info.get('filesize', 0)
+            
+            try:
+                safe_title, file_size = await loop.run_in_executor(None, download_sync)
+                
+                # Find the downloaded file
+                for file in os.listdir(temp_dir):
+                    if safe_title in file and any(ext in file.lower() for ext in ['.mp4', '.webm', '.mkv', '.avi']):
+                        file_path = os.path.join(temp_dir, file)
+                        actual_size = os.path.getsize(file_path)
+                        return file_path, file, actual_size
+                        
+                raise Exception("Downloaded file not found")
+                
+            except Exception as e:
+                print(f"⚠️ yt-dlp failed for Reddit: {e}")
+                # Fallback message
+                if progress_msg:
+                    await progress_msg.edit_text(
+                        f"🔴 نتوانستم از Reddit دانلود کنم.\n\n"
+                        f"🔗 لینک اصلی:\n{url}\n\n"
+                        f"💡 می‌توانید لینک را در مرورگر باز کنید و ویدیو را مشاهده کنید."
+                    )
+                    return None, None, None
+                
+        except Exception as e:
+            error_msg = f"خطا در دانلود از Reddit: {str(e)}"
+            print(f"❌ {error_msg}")
+            raise Exception(error_msg)
     
     async def download_qombol_content(self, url: str, progress_msg=None, user_name: str = "") -> tuple:
         """Download content from qombol.com by extracting video URLs from the page"""
