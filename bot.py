@@ -227,7 +227,11 @@ https://example.com/image.jpg
             # Check if it's qombol.com - handle specially
             if 'qombol.com' in url.lower():
                 print(f"🎬 Detected qombol.com URL, using custom handler: {url}")
-                file_path, filename, file_size = await self.download_qombol_content(url, processing_msg, user.first_name)
+                result = await self.download_qombol_content(url, processing_msg, user.first_name)
+                if result == (None, None, None):
+                    # Handler provided user message, no further action needed
+                    return
+                file_path, filename, file_size = result
             # Check if it's a video site URL that needs yt-dlp
             elif self.is_video_site_url(url):
                 print(f"📹 Detected video site URL, using yt-dlp: {url}")
@@ -273,7 +277,8 @@ https://example.com/image.jpg
             'xvideos.com', 'www.xvideos.com',
             'xnxx.com', 'www.xnxx.com',
             'porn300.com', 'www.porn300.com',
-            'xvv1deos.com', 'www.xvv1deos.com'
+            'xvv1deos.com', 'www.xvv1deos.com',
+            'motherless.com', 'www.motherless.com'
         ]
         try:
             parsed = urlparse(url.lower())
@@ -346,23 +351,63 @@ https://example.com/image.jpg
                     f"https://videodelivery.net/{video_id}/mp4/download",
                 ]
                 
-                # Create a new session for testing URLs
+                # Create a new session for testing URLs with proper authentication headers
+                auth_headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Referer': embed_url,
+                    'Origin': 'https://iframe.mediadelivery.net',
+                    'Accept': '*/*',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    'Accept-Encoding': 'gzip, deflate, br',
+                    'Connection': 'keep-alive',
+                    'Sec-Fetch-Dest': 'video',
+                    'Sec-Fetch-Mode': 'cors',
+                    'Sec-Fetch-Site': 'cross-site',
+                }
+                
                 test_timeout = aiohttp.ClientTimeout(total=10, connect=5)
-                async with aiohttp.ClientSession(timeout=test_timeout, headers=headers) as test_session:
+                async with aiohttp.ClientSession(timeout=test_timeout, headers=auth_headers) as test_session:
                     for i, test_url in enumerate(possible_urls):
                         try:
                             print(f"🔍 Testing URL {i+1}: {test_url}")
-                            async with test_session.head(test_url, allow_redirects=True) as test_response:
-                                print(f"   Response: {test_response.status}")
-                                if test_response.status == 200:
-                                    print(f"✅ Found working video URL: {test_url}")
-                                    return test_url
-                                elif test_response.status == 302 or test_response.status == 301:
-                                    # Follow redirect
-                                    redirect_url = str(test_response.headers.get('Location', ''))
-                                    if redirect_url and any(ext in redirect_url for ext in ['.mp4', '.m3u8']):
-                                        print(f"✅ Found redirect video URL: {redirect_url}")
-                                        return redirect_url
+                            
+                            # Try both HEAD and GET requests
+                            for method in ['HEAD', 'GET']:
+                                try:
+                                    if method == 'HEAD':
+                                        async with test_session.head(test_url, allow_redirects=True) as test_response:
+                                            status = test_response.status
+                                    else:
+                                        # For GET, only read first few bytes to check if it's valid
+                                        async with test_session.get(test_url, allow_redirects=True) as test_response:
+                                            status = test_response.status
+                                            if status == 200:
+                                                # Read first few bytes to verify it's a video
+                                                chunk = await test_response.content.read(1024)
+                                                if chunk and (b'ftyp' in chunk or b'moov' in chunk or b'#EXTM3U' in chunk):
+                                                    print(f"✅ Verified video content in URL: {test_url}")
+                                                    return test_url
+                                    
+                                    print(f"   {method} Response: {status}")
+                                    if status == 200:
+                                        print(f"✅ Found working video URL: {test_url}")
+                                        return test_url
+                                    elif status in [302, 301]:
+                                        # Follow redirect
+                                        redirect_url = str(test_response.headers.get('Location', ''))
+                                        if redirect_url and any(ext in redirect_url for ext in ['.mp4', '.m3u8']):
+                                            print(f"✅ Found redirect video URL: {redirect_url}")
+                                            return redirect_url
+                                    elif status == 403:
+                                        # 403 might mean the URL exists but needs different auth
+                                        continue
+                                    else:
+                                        break  # Try next URL
+                                        
+                                except Exception as e:
+                                    print(f"   {method} Error: {e}")
+                                    continue
+                                    
                         except Exception as e:
                             print(f"   Error: {e}")
                             continue
@@ -497,6 +542,18 @@ https://example.com/image.jpg
                                 return await self.download_video_with_ytdlp(embed_url, progress_msg, user_name)
                             except Exception as e:
                                 print(f"⚠️ yt-dlp also failed: {e}")
+                                
+                                # Final fallback: provide the embed URL to user
+                                if progress_msg:
+                                    try:
+                                        await progress_msg.edit_text(
+                                            f"⚠️ نتوانستم ویدیو را مستقیماً دانلود کنم.\n\n"
+                                            f"🔗 لینک پخش ویدیو:\n{embed_url}\n\n"
+                                            f"💡 می‌توانید این لینک را در مرورگر باز کنید و ویدیو را مشاهده کنید."
+                                        )
+                                        return None, None, None  # Signal that we handled it with a message
+                                    except:
+                                        pass
                                 break
                 
                 # Debug: Show some HTML content to understand the structure
