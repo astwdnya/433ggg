@@ -278,7 +278,9 @@ https://example.com/image.jpg
             'xnxx.com', 'www.xnxx.com',
             'porn300.com', 'www.porn300.com',
             'xvv1deos.com', 'www.xvv1deos.com',
-            'motherless.com', 'www.motherless.com'
+            'motherless.com', 'www.motherless.com',
+            'instagram.com', 'www.instagram.com',
+            'reddit.com', 'www.reddit.com', 'v.redd.it'
         ]
         try:
             parsed = urlparse(url.lower())
