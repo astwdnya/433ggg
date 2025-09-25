@@ -17,24 +17,29 @@ if not BOT_TOKEN:
 # If you run a local telegram-bot-api server, set these in your .env:
 # BOT_API_BASE_URL=http://<host>:8081/bot
 # BOT_API_BASE_FILE_URL=http://<host>:8081/file/bot
-BOT_API_BASE_URL = os.getenv('BOT_API_BASE_URL')
-BOT_API_BASE_FILE_URL = os.getenv('BOT_API_BASE_FILE_URL')
+BOT_API_BASE_URL = os.getenv("BOT_API_BASE_URL")
+BOT_API_BASE_FILE_URL = os.getenv("BOT_API_BASE_FILE_URL")
 
 # Optional: Free large-file workaround without Local Bot API
 # Generate a Pyrogram session string locally and set TG_SESSION_STRING,
 # and create a private channel, add both your user and the bot as admins,
 # then set its ID as BRIDGE_CHANNEL_ID.
-TG_SESSION_STRING = os.getenv('TG_SESSION_STRING')
-BRIDGE_CHANNEL_ID = int(os.getenv('BRIDGE_CHANNEL_ID', '0'))
+TG_SESSION_STRING = os.getenv("TG_SESSION_STRING")
+BRIDGE_CHANNEL_ID = os.getenv("BRIDGE_CHANNEL_ID")
 
-# Authorization settings
-_auth_users_raw = os.getenv('AUTHORIZED_USERS', '').strip()
-AUTHORIZED_USERS = set()
-if _auth_users_raw:
+# Reddit OAuth credentials
+REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
+REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
+
+# Parse authorized users from environment variable
+AUTHORIZED_USERS_STR = os.getenv("AUTHORIZED_USERS", "")
+if AUTHORIZED_USERS_STR:
     try:
-        AUTHORIZED_USERS = {int(x.strip()) for x in _auth_users_raw.split(',') if x.strip()}
-    except Exception:
-        # Ignore parse errors; will fall back to defaults in bot.py
-        AUTHORIZED_USERS = set()
+        AUTHORIZED_USERS = [int(user_id.strip()) for user_id in AUTHORIZED_USERS_STR.split(",") if user_id.strip()]
+    except ValueError:
+        print("⚠️ Invalid AUTHORIZED_USERS format. Using empty list.")
+        AUTHORIZED_USERS = []
+else:
+    AUTHORIZED_USERS = []
 
-ALLOW_ALL = os.getenv('ALLOW_ALL', 'false').lower() in {'1', 'true', 'yes', 'on'}
+ALLOW_ALL = os.getenv("ALLOW_ALL", "false").lower() in {'1', 'true', 'yes', 'on'}

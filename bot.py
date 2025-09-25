@@ -5,12 +5,15 @@ import tempfile
 import time
 import re
 import subprocess
-import json
-from urllib.parse import urlparse
-from pathlib import Path
-from telegram import Update, InputFile
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from telegram.request import HTTPXRequest
+import logging
+import shutil
+from datetime import datetime
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from reddit_auth import reddit_auth, start_auth_server
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+from telegram.constants import ParseMode
 from telegram.error import Conflict, BadRequest, Forbidden
 import yt_dlp
 from config import (
@@ -97,21 +100,90 @@ class TelegramDownloadBot:
         # Set the post_init hook
         application.post_init = _post_init
         self.app = application
-        # Authorized user IDs
-        default_users = {818185073, 6936101187, 7972834913}
-        self.authorized_users = set(CFG_AUTH_USERS) if CFG_AUTH_USERS else default_users
-        self.allow_all = bool(ALLOW_ALL)
-        self.setup_handlers()
-    
-    def setup_handlers(self):
-        """Setup command and message handlers"""
+        
+        # Load authorized users from config
+        self.authorized_users = set(CFG_AUTH_USERS) if CFG_AUTH_USERS else set()
+        self.allow_all = ALLOW_ALL
+        
+        print(f"🔐 Bot initialized with {len(self.authorized_users)} authorized users")
+        print(f"🌐 Allow all users: {self.allow_all}")
+        if self.authorized_users:
+            print(f"👥 Authorized user IDs: {list(self.authorized_users)}")
+        
+        # Reddit auth server will be started when bot runs
+        
+        # Add handlers
         self.app.add_handler(CommandHandler("start", self.start_command))
         self.app.add_handler(CommandHandler("help", self.help_command))
         self.app.add_handler(CommandHandler("id", self.id_command))
+        self.app.add_handler(CommandHandler("reddit_login", self.reddit_login_command))
+        self.app.add_handler(CallbackQueryHandler(self.handle_callback_query))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_link))
         # Centralized error handler (e.g., for 409 Conflict)
         self.app.add_error_handler(self.error_handler)
     
+    async def start_reddit_auth_server(self):
+        """Start the Reddit authentication server"""
+        try:
+            await start_auth_server()
+        except Exception as e:
+            print(f"❌ Failed to start Reddit auth server: {e}")
+    
+    async def reddit_login_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /reddit_login command"""
+        user_id = update.effective_user.id
+        user_name = update.effective_user.first_name or "کاربر"
+        
+        print(f"🔐 Reddit login request from {user_name} (ID: {user_id})")
+        
+        # Check if user is already authenticated
+        if reddit_auth.is_user_authenticated(user_id):
+            await update.message.reply_text(
+                "✅ شما قبلاً وارد Reddit شده‌اید!\n"
+                "حالا می‌توانید لینک‌های Reddit را ارسال کنید."
+            )
+            return
+        
+        # Generate auth URL
+        auth_url = reddit_auth.generate_auth_url(user_id)
+        
+        keyboard = [[InlineKeyboardButton("🔐 ورود به Reddit", url=auth_url)]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            "🔐 برای دسترسی به محتوای Reddit، لطفاً وارد حساب خود شوید:\n\n"
+            "1️⃣ روی دکمه زیر کلیک کنید\n"
+            "2️⃣ اجازه دسترسی به ربات را بدهید\n"
+            "3️⃣ صفحه به طور خودکار بسته می‌شود\n"
+            "4️⃣ برگردید و لینک Reddit را ارسال کنید\n\n"
+            "⚠️ این فرآیند فقط یک بار لازم است.",
+            reply_markup=reply_markup
+        )
+    
+    async def handle_callback_query(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle callback queries from inline buttons"""
+        query = update.callback_query
+        await query.answer()
+        
+        if query.data.startswith("reddit_login_"):
+            user_id = int(query.data.split("_")[-1])
+            
+            # Generate auth URL
+            auth_url = reddit_auth.generate_auth_url(user_id)
+            
+            keyboard = [[InlineKeyboardButton("🔐 ورود به Reddit", url=auth_url)]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                "🔐 برای دسترسی به محتوای Reddit، لطفاً وارد حساب خود شوید:\n\n"
+                "1️⃣ روی دکمه زیر کلیک کنید\n"
+                "2️⃣ اجازه دسترسی به ربات را بدهید\n"
+                "3️⃣ صفحه به طور خودکار بسته می‌شود\n"
+                "4️⃣ برگردید و لینک Reddit را ارسال کنید\n\n"
+                "⚠️ این فرآیند فقط یک بار لازم است.",
+                reply_markup=reply_markup
+            )
+
     async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE):
         """Log errors globally to avoid noisy tracebacks and explain common cases."""
         err = context.error
@@ -155,29 +227,27 @@ class TelegramDownloadBot:
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
         user = update.effective_user
-        print(f"❓ /help command received from user: {user.first_name} (@{user.username}) - ID: {user.id}")
+        print(f"📋 /help command received from user: {user.first_name} (@{user.username}) - ID: {user.id}")
         
-        # Check if user is authorized - silently ignore if not
-        if not self.is_authorized_user(user.id):
-            print(f"🚫 Unauthorized help request by {user.first_name} (ID: {user.id}) - ignored")
-            return
-        
-        help_message = """
-📖 راهنمای استفاده:
+        help_text = """
+🤖 **راهنمای ربات دانلود**
 
-1️⃣ لینک مستقیم دانلود فایل یا لینک ویدیو رو برام بفرست
-2️⃣ من فایل/ویدیو رو دانلود می‌کنم
-3️⃣ فایل رو مستقیماً براتون ارسال می‌کنم
+📥 **نحوه استفاده:**
+• لینک فایل، ویدیو یا عکس را ارسال کنید
+• ربات به طور خودکار فایل را دانلود و ارسال می‌کند
 
-🎬 سایت‌های ویدیو پشتیبانی شده:
-• P*rnhub
-• YouTube
-• Xvideos
-• Xnxx
-• P*rn300
-• Xvv1deos
+🎬 **سایت‌های پشتیبانی شده:**
+• YouTube, TikTok, Facebook, Vimeo
+• Twitter/X, Qombol.com
+• Reddit (نیاز به احراز هویت)
+• Instagram (محدود)
+• و بسیاری از سایت‌های دیگر
 
-📁 لینک‌های مستقیم دانلود:
+📱 **دستورات:**
+• `/start` - شروع ربات
+• `/help` - نمایش این راهنما
+• `/id` - نمایش شناسه کاربری
+• `/reddit_login` - ورود به Reddit
 • تمام فرمت‌های فایل
 • بدون محدودیت حجم فایل
 
@@ -240,12 +310,9 @@ https://example.com/image.jpg
                     return
                 file_path, filename, file_size = result
             # Check if it's Reddit - handle specially  
-            elif 'reddit.com' in url.lower() or 'v.redd.it' in url.lower():
+            elif 'reddit.com' in url:
                 print(f"🔴 Detected Reddit URL, using custom handler: {url}")
-                result = await self.download_reddit_content(url, processing_msg, user.first_name)
-                if result == (None, None, None):
-                    return
-                file_path, filename, file_size = result
+                file_path, filename, file_size = await self.download_reddit_content(url, processing_msg, user.first_name, user.id)
             # Check if it's a video site URL that needs yt-dlp
             elif self.is_video_site_url(url):
                 print(f"📹 Detected video site URL, using yt-dlp: {url}")
@@ -454,17 +521,37 @@ https://example.com/image.jpg
             print(f"❌ Error handling Instagram: {e}")
             raise Exception(f"خطا در پردازش Instagram: {str(e)}")
     
-    async def download_reddit_content(self, url: str, progress_msg=None, user_name: str = "") -> tuple:
-        """Handle Reddit downloads with custom extraction"""
+    async def download_reddit_content(self, url: str, progress_msg=None, user_name: str = "", user_id: int = None) -> tuple:
+        """Handle Reddit downloads with authentication"""
         try:
+            if progress_msg:
+                await progress_msg.edit_text("🔴 در حال بررسی احراز هویت Reddit...")
+            
+            # Check if user is authenticated
+            if not user_id or not reddit_auth.is_user_authenticated(user_id):
+                if progress_msg:
+                    keyboard = [[InlineKeyboardButton("🔐 ورود به Reddit", callback_data=f"reddit_login_{user_id}")]]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await progress_msg.edit_text(
+                        f"🔐 برای دانلود از Reddit باید وارد حساب خود شوید.\n\n"
+                        f"🔗 لینک درخواستی:\n{url}\n\n"
+                        f"💡 دستور /reddit_login را ارسال کنید یا روی دکمه زیر کلیک کنید:",
+                        reply_markup=reply_markup
+                    )
+                    return None, None, None
+                return None, None, None
+            
             if progress_msg:
                 await progress_msg.edit_text("🔴 در حال پردازش لینک Reddit...")
             
             # Convert mobile/share URL to proper format
             if '/s/' in url:
                 # This is a share URL, we need to resolve it first
+                token = reddit_auth.get_user_token(user_id)
                 headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'User-Agent': 'TelegramDownloadBot/1.0',
+                    'Authorization': f'Bearer {token}',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 }
                 
@@ -478,14 +565,20 @@ https://example.com/image.jpg
                         else:
                             raise Exception(f"HTTP {response.status}")
             
-            # Try to extract video using yt-dlp with Reddit-specific options
+            # Try to extract video using yt-dlp with authenticated session
             import tempfile
             temp_dir = tempfile.gettempdir()
+            
+            # Get user's Reddit token for yt-dlp
+            token = reddit_auth.get_user_token(user_id)
             
             ydl_opts = {
                 'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
                 'format': 'best[height<=720]/best',
-                'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'user_agent': 'TelegramDownloadBot/1.0',
+                'http_headers': {
+                    'Authorization': f'Bearer {token}'
+                },
                 'extractor_args': {
                     'reddit': {
                         'sort': 'best'
@@ -1104,12 +1197,14 @@ https://example.com/image.jpg
         except Exception as e:
             print(f"Error deleting file {file_path}: {str(e)}")
     
-    def run(self):
+    async def run(self):
         """Start the bot"""
-        print("🤖 Bot started successfully!")
-        print("📊 Bot is now online and waiting for requests...")
-        print("=" * 50)
-        self.app.run_polling(drop_pending_updates=True)
+        print("🚀 Starting Telegram Download Bot...")
+        
+        # Start Reddit auth server in background
+        asyncio.create_task(self.start_reddit_auth_server())
+        
+        await self.app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     bot = TelegramDownloadBot()
