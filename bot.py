@@ -14,6 +14,7 @@ from reddit_auth import reddit_auth, start_auth_server
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
 from telegram.constants import ParseMode
+from telegram.request import HTTPXRequest
 from telegram.error import Conflict, BadRequest, Forbidden
 import yt_dlp
 from config import (
