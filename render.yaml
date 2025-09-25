@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: telegram-download-bot
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: oregon
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: API_ID
+        sync: false
+      - key: API_HASH
+        sync: false
+      - key: TELEGRAM_API_ID
+        sync: false
+      - key: TELEGRAM_API_HASH
+        sync: false
+      - key: AUTHORIZED_USERS
+        sync: false
+      - key: ALLOW_ALL
+        value: "false"
+      - key: HEALTH_PORT
+        value: "10000"
+      - key: MAX_FILE_SIZE_GB
+        value: "2"
+      - key: CLEANUP_DELAY_SECONDS
+        value: "20"
+    healthCheckPath: /health
