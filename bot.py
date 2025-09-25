@@ -29,11 +29,20 @@ except Exception:
 
 class TelegramDownloadBot:
     def __init__(self):
-        # Build Application with optional Local Bot API server
-        builder = Application.builder().token(BOT_TOKEN)
+        # Create and configure the application with better timeout settings
+        application = (
+            Application.builder()
+            .token(BOT_TOKEN)
+            .read_timeout(60)
+            .write_timeout(60)
+            .connect_timeout(30)
+            .pool_timeout(60)
+            .get_updates_read_timeout(60)
+            .build()
+        )
         if BOT_API_BASE_URL:
             # Point to local Bot API server to lift 50MB cloud limit (up to 2GB)
-            builder = builder.base_url(BOT_API_BASE_URL)
+            builder = application.builder().base_url(BOT_API_BASE_URL)
             if BOT_API_BASE_FILE_URL:
                 builder = builder.base_file_url(BOT_API_BASE_FILE_URL)
             # Increase timeouts for large media uploads
@@ -45,6 +54,7 @@ class TelegramDownloadBot:
                 media_write_timeout=None,
             )
             builder = builder.request(req).get_updates_request(req)
+            application = builder.build()
             print(f"🔗 Using Local Bot API server: {BOT_API_BASE_URL}")
 
         # Define a post_init hook to run after application initialization
@@ -117,7 +127,7 @@ class TelegramDownloadBot:
 
 لینک مستقیم دانلود فایل یا لینک ویدیو خودتون رو برام بفرستید تا براتون دانلود کنم و ارسال کنم.
 
-🎬 پشتیبانی از سایت‌های ویدیو: P*rnhub, YouTube, Xvideos, P*rn300, Xvv1deos و...
+🎬 پشتیبانی از سایت‌های ویدیو: , YouTube, , ,  و...
 📁 پشتیبانی از لینک‌های مستقیم دانلود
 
 برای راهنمایی /help رو بزنید.
@@ -279,21 +289,30 @@ https://example.com/image.jpg
                         file.write(chunk)
                         downloaded += len(chunk)
                         
-                        # Update progress every 2 seconds
+                        # Update progress every 2 seconds or if no total size
                         current_time = time.time()
-                        if current_time - last_update >= 2 and progress_msg and total_size > 0:
+                        if current_time - last_update >= 2 and progress_msg:
                             elapsed_time = current_time - start_time
                             speed = downloaded / elapsed_time if elapsed_time > 0 else 0
-                            percentage = (downloaded / total_size) * 100
                             
-                            progress_text = self.create_progress_text(
-                                "📥 دانلود", percentage, speed, downloaded, total_size
-                            )
+                            if total_size > 0:
+                                percentage = (downloaded / total_size) * 100
+                                progress_text = self.create_progress_text(
+                                    "📥 دانلود", percentage, speed, downloaded, total_size
+                                )
+                            else:
+                                # Show progress without percentage for unknown size
+                                progress_text = f"""📥 دانلود در حال انجام...
+
+📊 دانلود شده: {self.format_file_size(downloaded)}
+🚀 سرعت: {self.format_speed(speed)}
+
+لطفاً صبر کنید..."""
                             
                             try:
                                 await progress_msg.edit_text(progress_text)
                                 last_update = current_time
-                                print(f"📊 Download progress for {user_name}: {percentage:.1f}% - {self.format_speed(speed)}")
+                                print(f"📊 Download progress for {user_name}: {self.format_file_size(downloaded)} - {self.format_speed(speed)}")
                             except:
                                 pass  # Ignore edit errors
                 
@@ -321,12 +340,20 @@ https://example.com/image.jpg
                         progress_text = self.create_progress_text(
                             "📹 دانلود ویدیو", percentage, speed, downloaded, total
                         )
-                        
-                        # Run in event loop
-                        loop = asyncio.get_event_loop()
-                        loop.create_task(progress_msg.edit_text(progress_text))
-                        last_update = current_time
-                        print(f"📊 Video download progress for {user_name}: {percentage:.1f}% - {self.format_speed(speed)}")
+                    else:
+                        # Show progress without percentage for unknown size
+                        progress_text = f"""📹 دانلود ویدیو در حال انجام...
+
+📊 دانلود شده: {self.format_file_size(downloaded)}
+🚀 سرعت: {self.format_speed(speed)}
+
+لطفاً صبر کنید..."""
+                    
+                    # Run in event loop
+                    loop = asyncio.get_event_loop()
+                    loop.create_task(progress_msg.edit_text(progress_text))
+                    last_update = current_time
+                    print(f"📊 Video download progress for {user_name}: {self.format_file_size(downloaded)} - {self.format_speed(speed)}")
                 except Exception as e:
                     pass  # Ignore progress update errors
         
