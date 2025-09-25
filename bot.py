@@ -346,23 +346,26 @@ https://example.com/image.jpg
                     f"https://videodelivery.net/{video_id}/mp4/download",
                 ]
                 
-                for i, test_url in enumerate(possible_urls):
-                    try:
-                        print(f"🔍 Testing URL {i+1}: {test_url}")
-                        async with session.head(test_url, allow_redirects=True) as test_response:
-                            print(f"   Response: {test_response.status}")
-                            if test_response.status == 200:
-                                print(f"✅ Found working video URL: {test_url}")
-                                return test_url
-                            elif test_response.status == 302 or test_response.status == 301:
-                                # Follow redirect
-                                redirect_url = str(test_response.headers.get('Location', ''))
-                                if redirect_url and any(ext in redirect_url for ext in ['.mp4', '.m3u8']):
-                                    print(f"✅ Found redirect video URL: {redirect_url}")
-                                    return redirect_url
-                    except Exception as e:
-                        print(f"   Error: {e}")
-                        continue
+                # Create a new session for testing URLs
+                test_timeout = aiohttp.ClientTimeout(total=10, connect=5)
+                async with aiohttp.ClientSession(timeout=test_timeout, headers=headers) as test_session:
+                    for i, test_url in enumerate(possible_urls):
+                        try:
+                            print(f"🔍 Testing URL {i+1}: {test_url}")
+                            async with test_session.head(test_url, allow_redirects=True) as test_response:
+                                print(f"   Response: {test_response.status}")
+                                if test_response.status == 200:
+                                    print(f"✅ Found working video URL: {test_url}")
+                                    return test_url
+                                elif test_response.status == 302 or test_response.status == 301:
+                                    # Follow redirect
+                                    redirect_url = str(test_response.headers.get('Location', ''))
+                                    if redirect_url and any(ext in redirect_url for ext in ['.mp4', '.m3u8']):
+                                        print(f"✅ Found redirect video URL: {redirect_url}")
+                                        return redirect_url
+                        except Exception as e:
+                            print(f"   Error: {e}")
+                            continue
             
             print("⚠️ Could not extract direct video URL from mediadelivery embed")
             return None
