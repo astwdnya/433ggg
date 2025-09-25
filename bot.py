@@ -65,25 +65,38 @@ class TelegramDownloadBot:
         async def _post_init(app):
             try:
                 await app.bot.delete_webhook(drop_pending_updates=True)
-                print("🔧 Webhook removed (if existed); polling enabled.")
+                print("🔧 Webhook removed; polling enabled.")
             except Exception as e:
-                print(f"⚠️ Could not delete webhook: {e}")
-            try:
-                me = await app.bot.get_me()
-                print(f"✅ Connected as @{me.username} (ID: {me.id})")
-                if BOT_API_BASE_URL:
-                    print(f"➡️ Using Bot API server: {BOT_API_BASE_URL}")
-                else:
-                    print("➡️ Using Telegram Cloud Bot API")
-                if self.allow_all:
-                    print("🔓 ALLOW_ALL is enabled (temporary). All users can use the bot.")
-                else:
-                    print(f"👤 Authorized users: {sorted(self.authorized_users)}")
-            except Exception as e:
-                print(f"⚠️ getMe failed: {e}")
-
-        builder = builder.post_init(_post_init)
-        self.app = builder.build()
+                print(f"⚠️ Webhook removal failed: {e}")
+            
+            # Add retry mechanism for get_me() to handle flood control
+            import asyncio
+            from telegram.error import RetryAfter
+            
+            for attempt in range(3):
+                try:
+                    me = await app.bot.get_me()
+                    print(f"✅ Bot connected: @{me.username}")
+                    break
+                except RetryAfter as e:
+                    if attempt < 2:
+                        wait_time = min(e.retry_after, 60)  # Max 60 seconds
+                        print(f"⏳ Rate limited, waiting {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                    else:
+                        print("⚠️ Rate limit exceeded, continuing without verification")
+                        break
+                except Exception as e:
+                    if attempt < 2:
+                        print(f"⚠️ Connection attempt {attempt + 1} failed, retrying...")
+                        await asyncio.sleep(5)
+                    else:
+                        print(f"⚠️ Bot verification failed: {e}")
+                        break
+        
+        # Set the post_init hook
+        application.post_init = _post_init
+        self.app = application
         # Authorized user IDs
         default_users = {818185073, 6936101187, 7972834913}
         self.authorized_users = set(CFG_AUTH_USERS) if CFG_AUTH_USERS else default_users
