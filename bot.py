@@ -332,23 +332,36 @@ https://example.com/image.jpg
             if video_id_match:
                 library_id = video_id_match.group(1)
                 video_id = video_id_match.group(2)
+                print(f"📋 Extracted IDs - Library: {library_id}, Video: {video_id}")
                 
                 # Try common BunnyCDN/MediaDelivery URL patterns
                 possible_urls = [
-                    f"https://iframe.mediadelivery.net/play/{library_id}/{video_id}",
                     f"https://vz-{library_id}.b-cdn.net/{video_id}/playlist.m3u8",
-                    f"https://vz-{library_id}.b-cdn.net/{video_id}/play_{library_id}p.mp4",
                     f"https://vz-{library_id}.b-cdn.net/{video_id}/play_720p.mp4",
                     f"https://vz-{library_id}.b-cdn.net/{video_id}/play_480p.mp4",
+                    f"https://vz-{library_id}.b-cdn.net/{video_id}/play_360p.mp4",
+                    f"https://vz-{library_id}.b-cdn.net/{video_id}/play_240p.mp4",
+                    f"https://iframe.mediadelivery.net/play/{library_id}/{video_id}",
+                    f"https://customer-{library_id}.cloudflarestream.com/{video_id}/manifest/video.m3u8",
+                    f"https://videodelivery.net/{video_id}/mp4/download",
                 ]
                 
-                for test_url in possible_urls:
+                for i, test_url in enumerate(possible_urls):
                     try:
-                        async with session.head(test_url) as test_response:
+                        print(f"🔍 Testing URL {i+1}: {test_url}")
+                        async with session.head(test_url, allow_redirects=True) as test_response:
+                            print(f"   Response: {test_response.status}")
                             if test_response.status == 200:
                                 print(f"✅ Found working video URL: {test_url}")
                                 return test_url
-                    except:
+                            elif test_response.status == 302 or test_response.status == 301:
+                                # Follow redirect
+                                redirect_url = str(test_response.headers.get('Location', ''))
+                                if redirect_url and any(ext in redirect_url for ext in ['.mp4', '.m3u8']):
+                                    print(f"✅ Found redirect video URL: {redirect_url}")
+                                    return redirect_url
+                    except Exception as e:
+                        print(f"   Error: {e}")
                         continue
             
             print("⚠️ Could not extract direct video URL from mediadelivery embed")
@@ -469,6 +482,20 @@ https://example.com/image.jpg
                         break
             
             if not video_url:
+                # Last resort: try yt-dlp on the embed URL if we found one
+                embed_patterns = [r'<iframe[^>]*src=["\']([^"\']+)["\']']
+                for pattern in embed_patterns:
+                    matches = re.findall(pattern, html_content, re.IGNORECASE)
+                    if matches:
+                        embed_url = matches[0]
+                        if 'mediadelivery.net' in embed_url or 'iframe' in embed_url:
+                            print(f"🎯 Last resort: trying yt-dlp on embed URL: {embed_url}")
+                            try:
+                                return await self.download_video_with_ytdlp(embed_url, progress_msg, user_name)
+                            except Exception as e:
+                                print(f"⚠️ yt-dlp also failed: {e}")
+                                break
+                
                 # Debug: Show some HTML content to understand the structure
                 print("🔍 No video found. HTML sample:")
                 print(html_content[:1000] + "..." if len(html_content) > 1000 else html_content)
