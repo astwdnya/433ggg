@@ -669,9 +669,11 @@ https://example.com/image.jpg
         """Delete file after specified delay"""
         try:
             await asyncio.sleep(delay_seconds)
-            if os.path.exists(file_path):
-                os.unlink(file_path)
-                print(f"File deleted after {delay_seconds} seconds: {file_path}")
+            os.unlink(file_path)
+            print(f"File deleted after {delay_seconds} seconds: {file_path}")
+        except FileNotFoundError:
+            # File already deleted, this is expected and not an error
+            print(f"File already removed: {file_path}")
         except Exception as e:
             print(f"Error deleting file {file_path}: {str(e)}")
     

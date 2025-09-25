@@ -45,10 +45,10 @@ class HealthServer:
     def start(self):
         """Start the health server in a separate thread"""
         def run_server():
-            # Bind to localhost only so Render does not treat this as the primary public port
-            self.app.run(host='127.0.0.1', port=self.port, debug=False, use_reloader=False)
+            # Bind to all interfaces for external accessibility (UptimeRobot monitoring)
+            self.app.run(host='0.0.0.0', port=self.port, debug=False, use_reloader=False)
         
         server_thread = threading.Thread(target=run_server, daemon=True)
         server_thread.start()
-        print(f"🌐 Health server started on port {self.port} (localhost only)")
+        print(f"🌐 Health server started on port {self.port} (accessible externally)")
         return server_thread
