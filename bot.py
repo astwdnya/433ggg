@@ -294,51 +294,98 @@ https://example.com/image.jpg
                 except:
                     pass
             
-            # Fetch the webpage content
+            # Fetch the webpage content with proper headers
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            }
+            
             timeout = aiohttp.ClientTimeout(total=30, connect=10)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
                 async with session.get(url) as response:
                     if response.status != 200:
                         raise Exception(f"HTTP {response.status}")
                     
                     html_content = await response.text()
             
-            # Look for video URLs in the HTML content
-            # Common patterns for video URLs
+            print(f"🔍 Analyzing HTML content (length: {len(html_content)})")
+            
+            # Enhanced patterns for qombol.com specifically
             video_patterns = [
+                # Direct video tags
                 r'<video[^>]*src=["\']([^"\']+)["\']',
                 r'<source[^>]*src=["\']([^"\']+)["\']',
-                r'file:\s*["\']([^"\']+\.(?:mp4|avi|mkv|mov|wmv|flv|webm))["\']',
-                r'src:\s*["\']([^"\']+\.(?:mp4|avi|mkv|mov|wmv|flv|webm))["\']',
+                # JavaScript video URLs
+                r'file:\s*["\']([^"\']+\.(?:mp4|avi|mkv|mov|wmv|flv|webm|m3u8))["\']',
+                r'src:\s*["\']([^"\']+\.(?:mp4|avi|mkv|mov|wmv|flv|webm|m3u8))["\']',
                 r'video_url["\']?\s*:\s*["\']([^"\']+)["\']',
-                r'https?://[^"\'\s]+\.(?:mp4|avi|mkv|mov|wmv|flv|webm)',
+                r'videoUrl["\']?\s*:\s*["\']([^"\']+)["\']',
+                r'mp4["\']?\s*:\s*["\']([^"\']+)["\']',
+                # CDN patterns common in adult sites
+                r'https?://[^"\'\s]*\.b-cdn\.net/[^"\'\s]*\.(?:mp4|avi|mkv|mov|wmv|flv|webm)',
+                r'https?://[^"\'\s]*cdn[^"\'\s]*\.(?:mp4|avi|mkv|mov|wmv|flv|webm)',
+                # Generic video file URLs
+                r'https?://[^"\'\s]+\.(?:mp4|avi|mkv|mov|wmv|flv|webm|m3u8)',
+                # WordPress media URLs
+                r'wp-content/uploads/[^"\'\s]*\.(?:mp4|avi|mkv|mov|wmv|flv|webm)',
             ]
             
             video_url = None
-            for pattern in video_patterns:
+            for i, pattern in enumerate(video_patterns):
                 matches = re.findall(pattern, html_content, re.IGNORECASE)
                 if matches:
+                    print(f"✅ Found video with pattern {i+1}: {matches[0]}")
                     video_url = matches[0]
                     break
             
             if not video_url:
-                # If no direct video URL found, try to find embedded video players
+                # Try to find embedded players
                 embed_patterns = [
                     r'<iframe[^>]*src=["\']([^"\']+)["\']',
+                    r'<embed[^>]*src=["\']([^"\']+)["\']',
                     r'embed_url["\']?\s*:\s*["\']([^"\']+)["\']',
+                    # Look for player URLs
+                    r'player["\']?\s*:\s*["\']([^"\']+)["\']',
                 ]
                 
-                for pattern in embed_patterns:
+                for i, pattern in enumerate(embed_patterns):
                     matches = re.findall(pattern, html_content, re.IGNORECASE)
                     if matches:
                         embed_url = matches[0]
-                        # Try to extract video from embed URL
-                        if any(domain in embed_url for domain in ['youtube.com', 'vimeo.com', 'dailymotion.com']):
+                        print(f"🔗 Found embed with pattern {i+1}: {embed_url}")
+                        
+                        # Check if it's a known video platform
+                        if any(domain in embed_url.lower() for domain in ['youtube.com', 'vimeo.com', 'dailymotion.com', 'pornhub.com', 'xvideos.com']):
+                            video_url = embed_url
+                            break
+                        # Or if it contains video file extension
+                        elif any(ext in embed_url.lower() for ext in ['.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm']):
                             video_url = embed_url
                             break
             
             if not video_url:
-                raise Exception("لینک ویدیو در صفحه پیدا نشد")
+                # Last resort: look for any media URLs in the page
+                media_patterns = [
+                    r'(https?://[^"\'\s]*(?:video|media|stream)[^"\'\s]*\.(?:mp4|avi|mkv|mov|wmv|flv|webm))',
+                    r'(https?://[^"\'\s]*\.(?:mp4|avi|mkv|mov|wmv|flv|webm)[^"\'\s]*)',
+                ]
+                
+                for pattern in media_patterns:
+                    matches = re.findall(pattern, html_content, re.IGNORECASE)
+                    if matches:
+                        video_url = matches[0]
+                        print(f"📹 Found media URL: {video_url}")
+                        break
+            
+            if not video_url:
+                # Debug: Show some HTML content to understand the structure
+                print("🔍 No video found. HTML sample:")
+                print(html_content[:1000] + "..." if len(html_content) > 1000 else html_content)
+                raise Exception("لینک ویدیو در صفحه پیدا نشد - ممکن است نیاز به روش دیگری باشد")
             
             # Make sure URL is absolute
             if video_url.startswith('//'):
@@ -347,7 +394,7 @@ https://example.com/image.jpg
                 from urllib.parse import urljoin
                 video_url = urljoin(url, video_url)
             
-            print(f"📹 Found video URL: {video_url}")
+            print(f"📹 Final video URL: {video_url}")
             
             # Update progress message
             if progress_msg:
