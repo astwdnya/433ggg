@@ -4,6 +4,8 @@ import aiohttp
 import tempfile
 import time
 import re
+import subprocess
+import json
 from urllib.parse import urlparse
 from pathlib import Path
 from telegram import Update, InputFile
@@ -434,6 +436,42 @@ https://example.com/image.jpg
         }
         return any(filename.lower().endswith(ext) for ext in photo_extensions)
     
+    def get_video_info(self, file_path: str) -> dict:
+        """Extract video information using ffprobe"""
+        try:
+            cmd = [
+                'ffprobe', '-v', 'quiet', '-print_format', 'json', 
+                '-show_format', '-show_streams', file_path
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                
+                # Find video stream
+                video_stream = None
+                for stream in data.get('streams', []):
+                    if stream.get('codec_type') == 'video':
+                        video_stream = stream
+                        break
+                
+                if video_stream:
+                    width = int(video_stream.get('width', 0))
+                    height = int(video_stream.get('height', 0))
+                    duration = float(video_stream.get('duration', 0))
+                    
+                    return {
+                        'width': width,
+                        'height': height,
+                        'duration': int(duration) if duration > 0 else None
+                    }
+            
+        except Exception as e:
+            print(f"⚠️ Could not extract video info: {e}")
+        
+        # Return default values if extraction fails
+        return {'width': None, 'height': None, 'duration': None}
+    
     def create_progress_text(self, action: str, percentage: float, speed: float, current: int, total: int) -> str:
         """Create progress text with bar and stats"""
         # Create progress bar
@@ -517,10 +555,15 @@ https://example.com/image.jpg
             with open(file_path, 'rb') as file:
                 media_file = InputFile(file, filename=filename, read_file_handle=False)
                 if self.is_video_file(filename):
+                    # Get video dimensions to maintain aspect ratio
+                    video_info = self.get_video_info(file_path)
                     await update.message.reply_video(
                         video=media_file,
                         caption=caption,
-                        supports_streaming=True
+                        supports_streaming=True,
+                        width=video_info['width'],
+                        height=video_info['height'],
+                        duration=video_info['duration']
                     )
                 elif self.is_audio_file(filename):
                     await update.message.reply_audio(
