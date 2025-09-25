@@ -42,7 +42,16 @@ class TelegramDownloadBot:
         )
         if BOT_API_BASE_URL:
             # Point to local Bot API server to lift 50MB cloud limit (up to 2GB)
-            builder = application.builder().base_url(BOT_API_BASE_URL)
+            builder = (
+                Application.builder()
+                .token(BOT_TOKEN)
+                .base_url(BOT_API_BASE_URL)
+                .read_timeout(60)
+                .write_timeout(60)
+                .connect_timeout(30)
+                .pool_timeout(60)
+                .get_updates_read_timeout(60)
+            )
             if BOT_API_BASE_FILE_URL:
                 builder = builder.base_file_url(BOT_API_BASE_FILE_URL)
             # Increase timeouts for large media uploads
