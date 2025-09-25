@@ -262,14 +262,15 @@ https://example.com/image.jpg
             return False
     
     def is_video_site_url(self, url: str) -> bool:
-        """Check if URL is from supported video sites like Pornhub"""
+        """Check if URL is from supported video sites"""
         video_sites = [
             'pornhub.com', 'www.pornhub.com',
             'youtube.com', 'www.youtube.com', 'youtu.be',
             'xvideos.com', 'www.xvideos.com',
             'xnxx.com', 'www.xnxx.com',
             'porn300.com', 'www.porn300.com',
-            'xvv1deos.com', 'www.xvv1deos.com'
+            'xvv1deos.com', 'www.xvv1deos.com',
+            'qombol.com', 'www.qombol.com'
         ]
         try:
             parsed = urlparse(url.lower())
