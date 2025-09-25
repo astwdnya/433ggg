@@ -117,7 +117,7 @@ class TelegramDownloadBot:
 
 لینک مستقیم دانلود فایل یا لینک ویدیو خودتون رو برام بفرستید تا براتون دانلود کنم و ارسال کنم.
 
-🎬 پشتیبانی از سایت‌های ویدیو: Pornhub, YouTube, Xvideos, Porn300 و...
+🎬 پشتیبانی از سایت‌های ویدیو: P*rnhub, YouTube, Xvideos, P*rn300, Xvv1deos و...
 📁 پشتیبانی از لینک‌های مستقیم دانلود
 
 برای راهنمایی /help رو بزنید.
@@ -143,11 +143,12 @@ class TelegramDownloadBot:
 3️⃣ فایل رو مستقیماً براتون ارسال می‌کنم
 
 🎬 سایت‌های ویدیو پشتیبانی شده:
-• Pornhub
+• P*rnhub
 • YouTube
 • Xvideos
 • Xnxx
-• Porn300
+• P*rn300
+• Xvv1deos
 
 📁 لینک‌های مستقیم دانلود:
 • تمام فرمت‌های فایل
@@ -156,6 +157,7 @@ class TelegramDownloadBot:
 مثال لینک‌های معتبر:
 https://www.pornhub.com/view_video.php?viewkey=...
 https://www.porn300.com/video/title/embed/
+https://www.xvv1deos.com/video.id/title
 https://example.com/file.pdf
 https://example.com/image.jpg
         """
@@ -239,7 +241,8 @@ https://example.com/image.jpg
             'youtube.com', 'www.youtube.com', 'youtu.be',
             'xvideos.com', 'www.xvideos.com',
             'xnxx.com', 'www.xnxx.com',
-            'porn300.com', 'www.porn300.com'
+            'porn300.com', 'www.porn300.com',
+            'xvv1deos.com', 'www.xvv1deos.com'
         ]
         try:
             parsed = urlparse(url.lower())
@@ -335,6 +338,8 @@ https://example.com/image.jpg
             'progress_hooks': [progress_hook],
             'quiet': True,
             'no_warnings': True,
+            'socket_timeout': 30,
+            'retries': 3,
         }
         
         try:
@@ -361,8 +366,14 @@ https://example.com/image.jpg
                     
                     return safe_title, info.get('filesize', 0)
             
-            # Execute download
-            safe_title, estimated_size = await loop.run_in_executor(None, download_sync)
+            # Execute download with timeout
+            try:
+                safe_title, estimated_size = await asyncio.wait_for(
+                    loop.run_in_executor(None, download_sync), 
+                    timeout=300  # 5 minutes timeout
+                )
+            except asyncio.TimeoutError:
+                raise Exception("دانلود ویدیو بیش از حد طول کشید (5 دقیقه)")
             
             # Find the downloaded file
             downloaded_files = []
