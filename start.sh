@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Debug: Show environment variables
+echo "🔍 Debug - Environment Variables in start.sh:"
+echo "BOT_TOKEN: ${BOT_TOKEN:-NOT_SET}"
+echo "API_ID: ${API_ID:-NOT_SET}"
+echo "API_HASH: ${API_HASH:-NOT_SET}"
+echo "TELEGRAM_API_ID: ${TELEGRAM_API_ID:-NOT_SET}"
+echo "TELEGRAM_API_HASH: ${TELEGRAM_API_HASH:-NOT_SET}"
+
 # Prefer TELEGRAM_API_ID/TELEGRAM_API_HASH. Fallback to API_ID/API_HASH from .env
 TELEGRAM_API_ID="${TELEGRAM_API_ID:-${API_ID:-}}"
 TELEGRAM_API_HASH="${TELEGRAM_API_HASH:-${API_HASH:-}}"

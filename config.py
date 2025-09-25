@@ -4,10 +4,26 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+# Debug: Print environment variables for troubleshooting
+print("🔍 Debug - Environment Variables:")
+print(f"BOT_TOKEN: {'SET' if os.getenv('BOT_TOKEN') else 'NOT SET'}")
+print(f"API_ID: {os.getenv('API_ID', 'NOT SET')}")
+print(f"API_HASH: {'SET' if os.getenv('API_HASH') else 'NOT SET'}")
+print(f"AUTHORIZED_USERS: {os.getenv('AUTHORIZED_USERS', 'NOT SET')}")
+
 # Telegram API credentials
 API_ID = int(os.getenv('API_ID', '2040'))
 API_HASH = os.getenv('API_HASH', 'b18441a1ff607e10a989891a5462e627')
 BOT_TOKEN = os.getenv('BOT_TOKEN')  # Read from environment for security
+
+if not BOT_TOKEN:
+    print("❌ ERROR: BOT_TOKEN is not set in environment variables!")
+    print("Available environment variables:")
+    for key in sorted(os.environ.keys()):
+        if 'TOKEN' in key or 'API' in key or 'BOT' in key:
+            print(f"  {key}: {'SET' if os.environ[key] else 'EMPTY'}")
+else:
+    print(f"✅ BOT_TOKEN loaded successfully: {BOT_TOKEN[:10]}...")
 
 # Optional: Use a Local Bot API server (to send files up to 2GB)
 # If you run a local telegram-bot-api server, set these in your .env:
